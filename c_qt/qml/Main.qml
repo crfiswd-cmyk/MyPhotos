@@ -13,7 +13,7 @@ ApplicationWindow {
     title: "MyPhotos (C++/Qt Quick)"
 
     property alias folderPath: folderField.text
-    property int thumbSize: parseInt(thumbSizeSelector.currentText)
+    property int thumbSize: 170
     property int preloadRadius: 3
     property url folderUrl: ""
     property int viewerIndex: -1
@@ -23,6 +23,15 @@ ApplicationWindow {
     property string viewerTitle: ""
     property string viewerDim: ""
     property bool viewerLoading: false
+
+    // Palette
+    property color cBg: "#080b12"
+    property color cPanel: "#0f131d"
+    property color cAccent: "#3f7dff"
+    property color cAccent2: "#5ed2ff"
+    property color cStroke: "#1f2533"
+    property color cText: "#e7ecf7"
+    property color cSub: "#9aa2b5"
 
     function fitViewer() {
         var w = viewerImage.paintedWidth
@@ -90,7 +99,9 @@ ApplicationWindow {
         viewerLoading = true
         viewerRotation = 0
         viewerWindow.visible = true
-        viewerWindow.visibility = Window.Maximized
+        if (!viewerWindow.visible) {
+            viewerWindow.visibility = Window.Maximized
+        }
         viewerWindow.raise()
         viewerWindow.requestActivate()
         // Fit after image is ready (see viewerImage onStatusChanged)
@@ -108,33 +119,121 @@ ApplicationWindow {
         anchors.margins: 12
         spacing: 8
 
-        RowLayout {
-            spacing: 8
+        // Hidden storage for folder path (for alias binding)
+        TextField {
+            id: folderField
+            visible: false
+            text: ""
+        }
+
+        Rectangle {
             Layout.fillWidth: true
+            implicitHeight: toolbar.implicitHeight + 10
+            radius: 10
+            color: cPanel
+            border.color: cStroke
+            border.width: 1
 
-            TextField {
-                id: folderField
-                Layout.fillWidth: true
-                placeholderText: "选择图片文件夹"
-                selectByMouse: true
-                readOnly: true
-            }
+            RowLayout {
+                id: toolbar
+                anchors.fill: parent
+                anchors.margins: 8
+                spacing: 8
 
-            Button {
-                Layout.preferredWidth: 110
-                text: "选择文件夹"
-                onClicked: {
-                    folderDialog.folder = folderUrl && folderUrl.toString().length > 0
-                                         ? folderUrl
-                                         : Platform.StandardPaths.writableLocation(Platform.StandardPaths.PicturesLocation)
-                    folderDialog.open()
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 32
+                    radius: 8
+                    color: "#0f141f"
+                    border.color: "#1e2433"
+                    Row {
+                        anchors.fill: parent
+                        anchors.margins: 8
+                        spacing: 6
+                        Rectangle { width: 3; radius: 2; color: cAccent; height: 18; anchors.verticalCenter: parent.verticalCenter }
+                        Text {
+                            text: folderField.text.length > 0 ? folderField.text : "未选择"
+                            color: cText
+                            elide: Text.ElideRight
+                            verticalAlignment: Text.AlignVCenter
+                            horizontalAlignment: Text.AlignHCenter
+                            Layout.fillWidth: true
+                            font.pixelSize: 12
+                        }
+                    }
                 }
-            }
 
-            ComboBox {
-                id: thumbSizeSelector
-                model: ["120", "170", "230", "420"]
-                currentIndex: 1
+                Button {
+                    Layout.preferredHeight: 30
+                    Layout.preferredWidth: 92
+                    text: "选择文件夹"
+                    font.pixelSize: 11
+                    onClicked: {
+                        folderDialog.folder = folderUrl && folderUrl.toString().length > 0
+                                             ? folderUrl
+                                             : Platform.StandardPaths.writableLocation(Platform.StandardPaths.PicturesLocation)
+                        folderDialog.open()
+                    }
+                    background: Rectangle {
+                        radius: 8
+                        gradient: Gradient {
+                            GradientStop { position: 0.0; color: cAccent }
+                            GradientStop { position: 1.0; color: cAccent2 }
+                        }
+                        border.color: "#4c6fe6"
+                        border.width: 0.5
+                    }
+                }
+
+                RowLayout {
+                    spacing: 6
+                    Layout.alignment: Qt.AlignVCenter
+                    Repeater {
+                        model: [
+                            { name: "小", size: 120 },
+                            { name: "中", size: 170 },
+                            { name: "大", size: 230 },
+                            { name: "特大", size: 420 }
+                        ]
+                        delegate: Rectangle {
+                            radius: 7
+                            width: 44
+                            height: 26
+                            color: thumbSize === modelData.size ? cAccent : "#0f141f"
+                            border.color: thumbSize === modelData.size ? cAccent2 : "#1e2433"
+                            Text {
+                                anchors.centerIn: parent
+                                text: modelData.name
+                                color: thumbSize === modelData.size ? "white" : cText
+                                font.pixelSize: 11
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: thumbSize = modelData.size
+                            }
+                        }
+                    }
+                    Rectangle {
+                        radius: 7
+                        width: 64
+                        height: 26
+                        color: "#0f141f"
+                        border.color: "#1e2433"
+                        Text {
+                            anchors.centerIn: parent
+                            text: "自定义"
+                            color: cText
+                            font.pixelSize: 11
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: {
+                                customSizeSlider.value = thumbSize
+                                customSizeDialog.open()
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -146,7 +245,11 @@ ApplicationWindow {
             Frame {
                 SplitView.fillWidth: true
                 SplitView.fillHeight: true
-                background: Rectangle { color: "#0f1115"; radius: 8; border.color: "#1c2028" }
+                background: Rectangle {
+                    color: cPanel
+                    radius: 12
+                    border.color: cStroke
+                }
 
                 GridView {
                     id: grid
@@ -225,7 +328,11 @@ ApplicationWindow {
             Frame {
                 SplitView.fillWidth: true
                 SplitView.fillHeight: true
-                background: Rectangle { color: "#0f1115"; radius: 8; border.color: "#1c2028" }
+                background: Rectangle {
+                    color: cPanel
+                    radius: 12
+                    border.color: cStroke
+                }
 
                 Flickable {
                     anchors.fill: parent
@@ -435,6 +542,36 @@ ApplicationWindow {
             folderField.text = path
             folderUrl = folder
             imageModel.folder = path
+        }
+    }
+
+    Dialog {
+        id: customSizeDialog
+        title: "自定义缩略图大小"
+        modal: true
+        implicitWidth: 360
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        onAccepted: {
+            thumbSize = Math.round(customSizeSlider.value)
+        }
+        contentItem: Item {
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 14
+                spacing: 10
+                Label {
+                    text: Math.round(customSizeSlider.value) + " px"
+                    color: cText
+                    font.pixelSize: 14
+                }
+                Slider {
+                    id: customSizeSlider
+                    from: 80
+                    to: 600
+                    stepSize: 10
+                    Layout.fillWidth: true
+                }
+            }
         }
     }
 }
