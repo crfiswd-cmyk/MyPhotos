@@ -23,6 +23,18 @@ Notes:
 - You can pass your Qt install path via `CMAKE_PREFIX_PATH` (e.g. `/Users/you/Qt/6.6.0/macos`).
 - CMake auto-bundles on macOS; on Linux/Windows, run the built binary from the build dir or package with windeployqt/macdeployqt if desired.
 
+## Run with plugin diagnostics (macOS)
+If launch fails due to missing Qt plugins, run from terminal with explicit paths and verbose logging:
+```bash
+cd c_qt
+DYLD_FRAMEWORK_PATH="$(brew --prefix qt)/lib" \
+QT_PLUGIN_PATH="$(brew --prefix qt)/plugins" \
+QT_MESSAGE_PATTERN="[%{type}] %{time h:mm:ss.zzz} %{category}: %{message}" \
+QT_DEBUG_PLUGINS=1 \
+./build/MyPhotosCpp.app/Contents/MacOS/MyPhotosCpp
+```
+If Gatekeeper blocks the bundle, clear quarantine: `xattr -d com.apple.quarantine build/MyPhotosCpp.app`.
+
 ## How it works
 - `ImageDecoder`: chooses libvips (if available) to decode + scale; else Qt.
 - `ThumbCache`: in-memory LRU (count + byte budget) + PNG disk cache keyed by path+size.
