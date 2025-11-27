@@ -48,6 +48,7 @@ CMakeCache.txt
 *.ninja_deps
 *.ninja_log
 compile_commands.json
+test_image/
 
 # Editor/IDE
 .idea/
