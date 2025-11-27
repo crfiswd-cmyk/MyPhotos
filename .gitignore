@@ -5,12 +5,49 @@ __pycache__/
 *.pyd
 .Python
 *.so
+*.dylib
 
 # Virtual environments
 .env
 .venv
 env/
 venv/
+
+# PyInstaller / build artifacts
+build/
+dist/
+*.spec
+*.app/
+*.dSYM/
+*.log
+*.trace
+*.prof
+
+# C++ / Qt (Qt Creator, CMake, MSVC)
+cmake-build*/
+CMakeFiles/
+CMakeCache.txt
+*.user
+*.pro.user
+*.qmake.stash
+*.autosave
+*.obj
+*.o
+*.a
+*.lib
+*.dll
+*.exe
+*.app
+*.bundle
+*.qrc
+*.rcc
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.ninja
+*.ninja_deps
+*.ninja_log
+compile_commands.json
 
 # Editor/IDE
 .idea/
