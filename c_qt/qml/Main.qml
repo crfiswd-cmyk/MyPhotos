@@ -21,6 +21,8 @@ ApplicationWindow {
     property int viewerRotation: 0
     property string viewerSource: ""
     property string viewerTitle: ""
+    property string viewerDim: ""
+    property bool viewerLoading: false
 
     function fitViewer() {
         var w = viewerImage.paintedWidth
@@ -84,6 +86,8 @@ ApplicationWindow {
         fullImage.source = src
         viewerSource = src
         viewerTitle = p.split("/").pop()
+        viewerDim = ""
+        viewerLoading = true
         viewerRotation = 0
         viewerWindow.visible = true
         viewerWindow.visibility = Window.Maximized
@@ -157,6 +161,7 @@ ApplicationWindow {
                         width: grid.cellWidth
                         height: grid.cellHeight
                         hoverEnabled: true
+                        property bool thumbReady: false
 
                         Rectangle {
                             anchors.fill: parent
@@ -169,6 +174,15 @@ ApplicationWindow {
                         Column {
                             anchors.centerIn: parent
                             spacing: 6
+                            Rectangle {
+                                width: thumbSize
+                                height: thumbSize
+                                radius: 10
+                                color: "#1f1f24"
+                                border.color: "#2b3033"
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                visible: !thumbReady
+                            }
                             Image {
                                 id: thumb
                                 source: "image://thumbs/" + thumbSize + "/" + path
@@ -179,6 +193,12 @@ ApplicationWindow {
                                 asynchronous: true
                                 width: thumbSize
                                 height: thumbSize
+                                visible: thumbReady
+                                onStatusChanged: {
+                                    if (status === Image.Ready) {
+                                        thumbReady = true
+                                    }
+                                }
                             }
                             Text {
                                 text: fileName
@@ -255,14 +275,16 @@ ApplicationWindow {
         width: 1100
         height: 820
         color: "#0f1115"
-        title: viewerTitle.length > 0 ? viewerTitle : "原图预览"
+        title: viewerDim.length > 0 && viewerTitle.length > 0
+               ? "(" + viewerDim + ") " + viewerTitle
+               : (viewerTitle.length > 0 ? viewerTitle : "原图预览")
         flags: Qt.Window
 
-        Flickable {
-            id: viewerFlick
-            anchors.fill: parent
-            contentWidth: Math.max(viewerImage.paintedWidth * viewerScale, width)
-            contentHeight: Math.max(viewerImage.paintedHeight * viewerScale, height)
+            Flickable {
+                id: viewerFlick
+                anchors.fill: parent
+                contentWidth: Math.max(viewerImage.paintedWidth * viewerScale, width)
+                contentHeight: Math.max(viewerImage.paintedHeight * viewerScale, height)
             clip: true
             interactive: true
             boundsBehavior: Flickable.StopAtBounds
@@ -286,9 +308,21 @@ ApplicationWindow {
                 ]
 
                 onStatusChanged: {
+                    if (status === Image.Loading) {
+                        viewerLoading = true
+                        viewerDim = ""
+                    }
                     if (status === Image.Ready) {
                         viewerRotation = 0
+                        var w = viewerImage.implicitWidth > 0 ? viewerImage.implicitWidth : viewerImage.paintedWidth
+                        var h = viewerImage.implicitHeight > 0 ? viewerImage.implicitHeight : viewerImage.paintedHeight
+                        viewerDim = Math.max(1, Math.round(w)) + "x" + Math.max(1, Math.round(h))
+                        viewerLoading = false
                         fitViewer()
+                    }
+                    if (status === Image.Error) {
+                        viewerLoading = false
+                        viewerDim = ""
                     }
                 }
 
@@ -332,6 +366,23 @@ ApplicationWindow {
                         viewerRotation = 0
                         fitViewer()
                     }
+                }
+            }
+
+            Rectangle {
+                anchors.centerIn: parent
+                width: 120
+                height: 120
+                radius: 12
+                color: "#161922"
+                border.color: "#252a36"
+                visible: viewerLoading || viewerSource.length === 0
+                Text {
+                    anchors.centerIn: parent
+                    text: "Loading..."
+                    color: "#8892a7"
+                    font.pixelSize: 14
+                    font.bold: true
                 }
             }
 
