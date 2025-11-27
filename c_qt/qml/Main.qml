@@ -16,8 +16,38 @@ ApplicationWindow {
     property int thumbSize: parseInt(thumbSizeSelector.currentText)
     property int preloadRadius: 3
     property url folderUrl: ""
+    property int viewerIndex: -1
+    property real viewerScale: 1.0
+    property int viewerRotation: 0
     property string viewerSource: ""
     property string viewerTitle: ""
+
+    function fitViewer() {
+        var w = viewerImage.paintedWidth
+        var h = viewerImage.paintedHeight
+        if (w <= 0 || h <= 0) {
+            viewerScale = 1.0
+            return
+        }
+        var rot = viewerRotation % 180
+        var bw = rot === 0 ? w : h
+        var bh = rot === 0 ? h : w
+        var sx = viewerWindow.width / bw
+        var sy = viewerWindow.height / bh
+        var s = Math.min(sx, sy)
+        if (!isFinite(s) || s <= 0) {
+            s = 1.0
+        }
+        viewerScale = s
+        centerViewer()
+    }
+
+    function centerViewer() {
+        if (viewerFlick) {
+            viewerFlick.contentX = (viewerFlick.contentWidth - viewerFlick.width) / 2
+            viewerFlick.contentY = (viewerFlick.contentHeight - viewerFlick.height) / 2
+        }
+    }
 
     function toLocalPath(u) {
         var s = ""
@@ -38,6 +68,35 @@ ApplicationWindow {
             return s.slice(5)
         }
         return s
+    }
+
+    function openViewerForIndex(idx) {
+        var total = grid.count
+        if (total <= 0)
+            return
+        var next = (idx % total + total) % total
+        var p = imageModel.pathAt(next)
+        if (!p || p.length === 0)
+            return
+        viewerIndex = next
+        grid.currentIndex = viewerIndex
+        var src = "image://thumbs/full/" + p
+        fullImage.source = src
+        viewerSource = src
+        viewerTitle = p.split("/").pop()
+        viewerRotation = 0
+        viewerWindow.visible = true
+        viewerWindow.visibility = Window.Maximized
+        viewerWindow.raise()
+        viewerWindow.requestActivate()
+        // Fit after image is ready (see viewerImage onStatusChanged)
+    }
+
+    function stepImage(delta) {
+        var base = viewerIndex >= 0 ? viewerIndex : grid.currentIndex
+        if (base < 0)
+            base = 0
+        openViewerForIndex(base + delta)
     }
 
     ColumnLayout {
@@ -132,14 +191,7 @@ ApplicationWindow {
                         }
 
                         onClicked: {
-                            grid.currentIndex = index
-                            var src = "image://thumbs/full/" + path
-                            fullImage.source = src
-                            viewerSource = src
-                            viewerTitle = fileName
-                            viewerWindow.visible = true
-                            viewerWindow.raise()
-                            viewerWindow.requestActivate()
+                            openViewerForIndex(index)
                         }
 
                         Component.onCompleted: {
@@ -161,6 +213,8 @@ ApplicationWindow {
                     contentHeight: fullImage.paintedHeight
                     clip: true
                     interactive: true
+                    contentX: (contentWidth - width) / 2
+                    contentY: (contentHeight - height) / 2
 
                     Image {
                         id: fullImage
@@ -205,11 +259,15 @@ ApplicationWindow {
         flags: Qt.Window
 
         Flickable {
+            id: viewerFlick
             anchors.fill: parent
-            contentWidth: viewerImage.paintedWidth
-            contentHeight: viewerImage.paintedHeight
+            contentWidth: Math.max(viewerImage.paintedWidth * viewerScale, width)
+            contentHeight: Math.max(viewerImage.paintedHeight * viewerScale, height)
             clip: true
             interactive: true
+            boundsBehavior: Flickable.StopAtBounds
+            flickDeceleration: 2500
+            focus: true
 
             Image {
                 id: viewerImage
@@ -221,12 +279,97 @@ ApplicationWindow {
                 smooth: true
                 sourceSize.width: 3200
                 sourceSize.height: 3200
+                transformOrigin: Item.Center
+                transform: [
+                    Scale { xScale: viewerScale; yScale: viewerScale; origin.x: viewerImage.paintedWidth / 2; origin.y: viewerImage.paintedHeight / 2 },
+                    Rotation { angle: viewerRotation; origin.x: viewerImage.paintedWidth / 2; origin.y: viewerImage.paintedHeight / 2 }
+                ]
+
+                onStatusChanged: {
+                    if (status === Image.Ready) {
+                        viewerRotation = 0
+                        fitViewer()
+                    }
+                }
+
+                PinchHandler {
+                    id: pinch
+                    target: null // manual control
+                    property real startScale: 1.0
+                    onActiveChanged: {
+                        if (active) {
+                            startScale = viewerScale
+                        }
+                    }
+                    onScaleChanged: {
+                        if (!active)
+                            return
+                        var s = startScale * scale
+                        viewerScale = Math.max(0.1, Math.min(10, s))
+                        centerViewer()
+                    }
+                }
+
+                WheelHandler {
+                    id: wheel
+                    target: null
+                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                    onWheel: function(event) {
+                        var dy = event.angleDelta.y
+                        if (dy === 0)
+                            return
+                        var factor = dy > 0 ? 1.12 : 1 / 1.12
+                        viewerScale = Math.max(0.1, Math.min(10, viewerScale * factor))
+                        centerViewer()
+                        event.accepted = true
+                    }
+                }
+
+                TapHandler {
+                    acceptedButtons: Qt.LeftButton
+                    gesturePolicy: TapHandler.WithinBounds
+                    onDoubleTapped: {
+                        viewerRotation = 0
+                        fitViewer()
+                    }
+                }
             }
+
+            onWidthChanged: centerViewer()
+            onHeightChanged: centerViewer()
+            onContentWidthChanged: centerViewer()
+            onContentHeightChanged: centerViewer()
         }
 
         Shortcut {
             sequences: [StandardKey.Close, StandardKey.Cancel]
             onActivated: viewerWindow.visible = false
+        }
+        Shortcut {
+            sequences: ["Left"]
+            context: Qt.ApplicationShortcut
+            onActivated: stepImage(-1)
+        }
+        Shortcut {
+            sequences: ["Right"]
+            context: Qt.ApplicationShortcut
+            onActivated: stepImage(1)
+        }
+        Shortcut {
+            sequences: ["Up"]
+            context: Qt.ApplicationShortcut
+            onActivated: {
+                viewerRotation = (viewerRotation + 90) % 360
+                fitViewer()
+            }
+        }
+        Shortcut {
+            sequences: ["Down"]
+            context: Qt.ApplicationShortcut
+            onActivated: {
+                viewerRotation = (viewerRotation + 270) % 360
+                fitViewer()
+            }
         }
     }
 
