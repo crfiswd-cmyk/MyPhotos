@@ -554,23 +554,58 @@ ApplicationWindow {
         onAccepted: {
             thumbSize = Math.round(customSizeSlider.value)
         }
+        x: (parent ? parent.width : Screen.width) / 2 - implicitWidth / 2
+        y: (parent ? parent.height : Screen.height) / 2 - implicitHeight / 2
+        background: Rectangle {
+            radius: 12
+            color: cPanel
+            border.color: "transparent"
+            border.width: 0
+        }
         contentItem: Item {
             ColumnLayout {
                 anchors.fill: parent
-                anchors.margins: 14
-                spacing: 10
+                anchors.margins: 16
+                spacing: 14
+
                 Label {
-                    text: Math.round(customSizeSlider.value) + " px"
+                    text: "预览缩略图分辨率"
                     color: cText
                     font.pixelSize: 14
+                    font.bold: true
                 }
-                Slider {
-                    id: customSizeSlider
-                    from: 80
-                    to: 600
-                    stepSize: 10
+                Label {
+                    text: "拖动滑块设置像素"
+                    color: cSub
+                    font.pixelSize: 11
+                }
+
+                RowLayout {
                     Layout.fillWidth: true
+                    spacing: 10
+                    Slider {
+                        id: customSizeSlider
+                        from: 80
+                        to: 600
+                        stepSize: 10
+                        Layout.fillWidth: true
+                    }
+                    Rectangle {
+                        Layout.preferredWidth: 64
+                        Layout.preferredHeight: 28
+                        radius: 7
+                        color: "#0f141f"
+                        border.color: "#1e2433"
+                        Text {
+                            anchors.centerIn: parent
+                            text: Math.round(customSizeSlider.value) + "px"
+                            color: cText
+                            font.pixelSize: 11
+                        }
+                    }
                 }
+
+                Item { Layout.fillWidth: true; Layout.preferredHeight: 12 }
             }
         }
     }
