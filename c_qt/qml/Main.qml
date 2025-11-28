@@ -254,8 +254,8 @@ ApplicationWindow {
                 GridView {
                     id: grid
                     anchors.fill: parent
-                    cellWidth: thumbSize + 24
-                    cellHeight: thumbSize + 32
+                    cellWidth: thumbSize + 4
+                    cellHeight: thumbSize + 4
                     model: imageModel
                     clip: true
                     cacheBuffer: 400
@@ -268,48 +268,39 @@ ApplicationWindow {
 
                         Rectangle {
                             anchors.fill: parent
-                            color: containsMouse ? "#111621" : "transparent"
-                            radius: 10
-                            border.color: ListView.isCurrentItem ? "#3f7dff" : "#202534"
+                            color: containsMouse ? "#0f141f" : "transparent"
+                            radius: 6
+                            border.color: ListView.isCurrentItem ? cAccent : "transparent"
                             border.width: ListView.isCurrentItem ? 1 : 0
                         }
 
-                        Column {
-                            anchors.centerIn: parent
-                            spacing: 6
+                        Item {
+                            anchors.fill: parent
+                            anchors.margins: 1
+                            clip: true
+
                             Rectangle {
-                                width: thumbSize
-                                height: thumbSize
-                                radius: 10
-                                color: "#1f1f24"
-                                border.color: "#2b3033"
-                                anchors.horizontalCenter: parent.horizontalCenter
+                                anchors.fill: parent
+                                radius: 4
+                                color: "#151820"
+                                border.color: "#1f2533"
                                 visible: !thumbReady
                             }
                             Image {
                                 id: thumb
+                                anchors.fill: parent
                                 source: "image://thumbs/" + thumbSize + "/" + path
                                 sourceSize.width: thumbSize
                                 sourceSize.height: thumbSize
-                                fillMode: Image.PreserveAspectFit
+                                fillMode: Image.PreserveAspectCrop
                                 cache: true
                                 asynchronous: true
-                                width: thumbSize
-                                height: thumbSize
-                                visible: thumbReady
+                                smooth: true
                                 onStatusChanged: {
                                     if (status === Image.Ready) {
                                         thumbReady = true
                                     }
                                 }
-                            }
-                            Text {
-                                text: fileName
-                                color: "#dfe3ed"
-                                elide: Text.ElideMiddle
-                                font.pixelSize: 11
-                                horizontalAlignment: Text.AlignHCenter
-                                width: thumbSize + 8
                             }
                         }
 
