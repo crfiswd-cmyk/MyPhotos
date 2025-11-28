@@ -35,6 +35,21 @@ QT_DEBUG_PLUGINS=1 \
 ```
 If Gatekeeper blocks the bundle, clear quarantine: `xattr -d com.apple.quarantine build/MyPhotosCpp.app`.
 
+## Disk mode override
+- Auto-detect HDD/SSD/NVMe and adjust mmap usage, prefetch depth, and thread counts.
+- Force a mode via env var before launch: `MY_PHOTOS_DISK_MODE=hdd` or `MY_PHOTOS_DISK_MODE=ssd`.
+- HDD mode: disable mmap, deeper prefetch window, fewer decode threads. SSD mode: enable mmap, lighter prefetch, moderate threads.
+- Tile cache envs: `MY_PHOTOS_TILE_CACHE_ENTRIES` (default 3000) to cap disk tile cache count; `MY_PHOTOS_TILE_CACHE_DIR` to override tile cache directory (defaults to `CacheLocation/tiles`).
+
+## Performance plan (HDD + SSD/NVMe)
+- Storage-aware I/O: detect HDD/SSD at startup (IOCTL_STORAGE_QUERY_PROPERTY on Windows, IOKit on macOS, `/sys/block/*/queue/rotational` on Linux).  
+  - SSD/NVMe: mmap + light prefetch (prev/current/next), random seek OK.  
+  - HDD: buffered sequential read (4–16MB), deep prefetch queue (±5–10 images), avoid random seeks.
+- Decoding: prefer platform decoders (WIC on Windows, ImageIO on macOS, libjpeg-turbo/libpng/libwebp on Linux); optional libvips for fast downscale. Thumbnails: quick small decode first, then async HQ replace; originals: background decode + GPU upload.
+- Caching: two LRUs (thumb/full) capped by count+bytes; disk thumb cache keyed by path+size+version; preload window for original images (SSD: ±1–2, HDD: ±3–5).
+- UI/UX: placeholders for thumbs and originals; show low-res then swap; title shows “(WxH) filename”; keep window size when stepping.
+- Rendering: GPU textures with mipmap/smooth scaling; rotation/zoom on GPU; optional tile/pyramid for ultra-large images.
+- Threads: separate I/O and decode pools; priority by viewport (visible > near > prefetch); cancel stale jobs on scroll/jump.
 ## How it works
 - `ImageDecoder`: chooses libvips (if available) to decode + scale; else Qt.
 - `ThumbCache`: in-memory LRU (count + byte budget) + PNG disk cache keyed by path+size.

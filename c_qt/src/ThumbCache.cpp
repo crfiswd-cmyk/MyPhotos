@@ -6,9 +6,10 @@
 #include <QFile>
 #include <QFileInfo>
 
-ThumbCache::ThumbCache(int maxItems, qint64 maxBytes)
+ThumbCache::ThumbCache(int maxItems, qint64 maxBytes, int maxDiskEntries)
     : m_maxItems(maxItems)
     , m_maxBytes(maxBytes)
+    , m_maxDiskEntries(maxDiskEntries)
 {
     auto base = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
     if (base.isEmpty()) {
@@ -99,4 +100,22 @@ void ThumbCache::persistToDisk(const QString& key, const QImage& image)
 
     // Fire-and-forget save.
     image.save(path, "PNG");
+
+    cleanupDisk();
+}
+
+void ThumbCache::cleanupDisk()
+{
+    if (m_maxDiskEntries <= 0) {
+        return;
+    }
+    QDir dir(m_diskRoot);
+    const auto files = dir.entryInfoList(QStringList() << "*.png", QDir::Files, QDir::Time | QDir::Reversed);
+    if (files.size() <= m_maxDiskEntries) {
+        return;
+    }
+    const int toRemove = files.size() - m_maxDiskEntries;
+    for (int i = 0; i < toRemove; ++i) {
+        QFile::remove(files.at(i).absoluteFilePath());
+    }
 }

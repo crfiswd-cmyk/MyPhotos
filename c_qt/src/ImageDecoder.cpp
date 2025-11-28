@@ -1,11 +1,22 @@
 #include "ImageDecoder.h"
 
+#include <QBuffer>
+#include <QFile>
 #include <QImageReader>
 #include <QSize>
 #include <QtGlobal>
 
+#include "SequentialFileReader.h"
+
 #ifdef HAVE_VIPS
 #include <mutex>
+#include <vips/vips8>
+#endif
+
+bool ImageDecoder::s_useMmap = true;
+bool ImageDecoder::s_useSequentialIO = false;
+
+#ifdef HAVE_VIPS
 #include <vips/vips8>
 #endif
 
@@ -22,6 +33,16 @@ QImage ImageDecoder::decode(const QString& path, int maxEdge)
     }
 #endif
     return decodeWithQt(path, maxEdge);
+}
+
+void ImageDecoder::setUseMmap(bool enabled)
+{
+    s_useMmap = enabled;
+}
+
+void ImageDecoder::setUseSequentialIO(bool enabled)
+{
+    s_useSequentialIO = enabled;
 }
 
 #ifdef HAVE_VIPS
@@ -97,7 +118,37 @@ QImage ImageDecoder::decodeWithVips(const QString& path, int maxEdge)
 
 QImage ImageDecoder::decodeWithQt(const QString& path, int maxEdge)
 {
-    QImageReader reader(path);
+    QImageReader reader;
+    QFile file(path);
+    bool mapped = false;
+    uchar* mapPtr = nullptr;
+    QByteArray seqData;
+
+    if (!s_useMmap && s_useSequentialIO) {
+        seqData = SequentialFileReader::instance().readFile(path);
+        if (!seqData.isEmpty()) {
+            QBuffer* buf = new QBuffer(&seqData);
+            buf->open(QIODevice::ReadOnly);
+            reader.setDevice(buf);
+        } else {
+            reader.setFileName(path);
+        }
+    } else if (s_useMmap && file.open(QIODevice::ReadOnly)) {
+        mapPtr = file.map(0, file.size());
+        if (mapPtr) {
+            QByteArray raw = QByteArray::fromRawData(reinterpret_cast<const char*>(mapPtr), file.size());
+            QBuffer* buf = new QBuffer(&raw);
+            buf->open(QIODevice::ReadOnly);
+            reader.setDevice(buf);
+            mapped = true;
+        } else {
+            // fallback to direct file path
+            reader.setFileName(path);
+        }
+    } else {
+        reader.setFileName(path);
+    }
+
     reader.setAutoTransform(true);
     if (maxEdge > 0) {
         const QSize source = reader.size();
@@ -107,6 +158,14 @@ QImage ImageDecoder::decodeWithQt(const QString& path, int maxEdge)
         }
     }
     QImage img = reader.read();
+
+    if (mapped) {
+        file.unmap(mapPtr);
+        if (reader.device()) {
+            reader.device()->deleteLater();
+        }
+    }
+
     if (img.isNull()) {
         return img;
     }

@@ -29,6 +29,10 @@ set(SOURCES
   src/ThumbProvider.cpp
   src/ImageListModel.cpp
   src/ThumbBridge.cpp
+  src/SequentialFileReader.cpp
+  src/TileCache.cpp
+  src/TileLoader.cpp
+  src/TiledImageItem.cpp
 )
 
 qt_add_resources(APP_RESOURCES qml/qml.qrc)

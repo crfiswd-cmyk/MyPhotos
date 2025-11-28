@@ -24,13 +24,7 @@ void ImageListModel::setFolder(const QString& path)
     m_folder = QDir(path).absolutePath();
     emit folderChanged();
 
-    const auto dirs = m_watcher.directories();
-    if (!dirs.isEmpty()) {
-        m_watcher.removePaths(dirs);
-    }
-    if (QDir(m_folder).exists()) {
-        m_watcher.addPath(m_folder);
-    }
+    updateWatcher();
     reload();
 }
 
@@ -84,25 +78,59 @@ void ImageListModel::reload()
         return;
     }
 
-    QStringList files;
+    QSet<QString> current(m_paths.begin(), m_paths.end());
+    QStringList added;
+    QStringList kept;
+
     QDirIterator it(dir.path(), QDir::Files);
     while (it.hasNext()) {
         const QString entry = it.next();
         if (isImageFile(entry)) {
-            files << entry;
+            kept << entry;
+            current.remove(entry);
         }
     }
-    std::sort(files.begin(), files.end(), [](const QString& a, const QString& b) {
-        return a.toLower() < b.toLower();
-    });
 
-    beginResetModel();
-    m_paths = files;
-    endResetModel();
+    // current now holds removed files
+    bool changed = false;
+    if (!current.isEmpty()) {
+        m_paths.erase(std::remove_if(m_paths.begin(), m_paths.end(), [&](const QString& p) { return current.contains(p); }), m_paths.end());
+        changed = true;
+    }
+
+    for (const auto& k : kept) {
+        if (!m_paths.contains(k)) {
+            added << k;
+        }
+    }
+
+    if (!added.isEmpty()) {
+        m_paths.append(added);
+        changed = true;
+    }
+
+    if (changed) {
+        std::sort(m_paths.begin(), m_paths.end(), [](const QString& a, const QString& b) {
+            return a.toLower() < b.toLower();
+        });
+        beginResetModel();
+        endResetModel();
+    }
 }
 
 bool ImageListModel::isImageFile(const QString& fileName)
 {
     const QString ext = QFileInfo(fileName).suffix().toLower();
     return kExtensions.contains(ext);
+}
+
+void ImageListModel::updateWatcher()
+{
+    const auto dirs = m_watcher.directories();
+    if (!dirs.isEmpty()) {
+        m_watcher.removePaths(dirs);
+    }
+    if (QDir(m_folder).exists()) {
+        m_watcher.addPath(m_folder);
+    }
 }

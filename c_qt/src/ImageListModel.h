@@ -36,6 +36,9 @@ private:
     QString m_folder;
     QStringList m_paths;
     QFileSystemWatcher m_watcher;
+    QHash<QString, QFileSystemWatcher*> m_subWatchers;
+
+    void updateWatcher();
 
     static bool isImageFile(const QString& fileName);
 };

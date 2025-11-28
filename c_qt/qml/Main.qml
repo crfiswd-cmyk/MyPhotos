@@ -3,6 +3,7 @@ import QtQuick.Window 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 import Qt.labs.platform 1.1 as Platform
+import MyPhotos 1.0
 
 ApplicationWindow {
     id: root
@@ -14,7 +15,9 @@ ApplicationWindow {
 
     property alias folderPath: folderField.text
     property int thumbSize: 170
-    property int preloadRadius: 3
+    property int thumbPrefetchRadius: thumbPrefetchRadiusValue ? thumbPrefetchRadiusValue : 3
+    property int preloadRadius: thumbPrefetchRadius
+    property int fullPrefetchRadius: fullPrefetchRadiusValue ? fullPrefetchRadiusValue : 2
     property url folderUrl: ""
     property int viewerIndex: -1
     property real viewerScale: 1.0
@@ -23,6 +26,7 @@ ApplicationWindow {
     property string viewerTitle: ""
     property string viewerDim: ""
     property bool viewerLoading: false
+    property int visiblePrefetchRadius: thumbPrefetchRadius
 
     // Palette
     property color cBg: "#080b12"
@@ -92,18 +96,21 @@ ApplicationWindow {
         viewerIndex = next
         grid.currentIndex = viewerIndex
         var src = "image://thumbs/full/" + p
-        fullImage.source = src
-        viewerSource = src
+        fullImage.source = p
+        viewerSource = p
         viewerTitle = p.split("/").pop()
         viewerDim = ""
         viewerLoading = true
         viewerRotation = 0
-        viewerWindow.visible = true
         if (!viewerWindow.visible) {
             viewerWindow.visibility = Window.Maximized
+            viewerWindow.visible = true
         }
         viewerWindow.raise()
         viewerWindow.requestActivate()
+        if (fullPrefetchRadius > 0) {
+            thumbBridge.prefetchAround(viewerIndex, fullPrefetchRadius, 0)
+        }
         // Fit after image is ready (see viewerImage onStatusChanged)
     }
 
@@ -112,6 +119,17 @@ ApplicationWindow {
         if (base < 0)
             base = 0
         openViewerForIndex(base + delta)
+    }
+
+    function prefetchVisibleThumbs() {
+        if (grid.count === 0)
+            return
+        var first = grid.indexAt(0, grid.contentY)
+        if (first < 0)
+            first = 0
+        var rowsVisible = Math.ceil(grid.height / grid.cellHeight) + 1
+        var center = first + Math.floor(rowsVisible / 2)
+        thumbBridge.prefetchAround(center, visiblePrefetchRadius, thumbSize)
     }
 
     ColumnLayout {
@@ -322,6 +340,10 @@ ApplicationWindow {
                             thumbBridge.prefetchAround(index, preloadRadius, thumbSize)
                         }
                     }
+
+                    onContentYChanged: prefetchVisibleThumbs()
+                    onHeightChanged: prefetchVisibleThumbs()
+                    onModelChanged: prefetchVisibleThumbs()
                 }
             }
 
@@ -336,23 +358,69 @@ ApplicationWindow {
 
                 Flickable {
                     anchors.fill: parent
-                    contentWidth: fullImage.paintedWidth
-                    contentHeight: fullImage.paintedHeight
+                    contentWidth: width
+                    contentHeight: height
                     clip: true
                     interactive: true
-                    contentX: (contentWidth - width) / 2
-                    contentY: (contentHeight - height) / 2
+                    contentX: 0
+                    contentY: 0
 
-                    Image {
+                    TiledImage {
                         id: fullImage
-                        anchors.centerIn: parent
+                        anchors.fill: parent
                         source: ""
-                        fillMode: Image.PreserveAspectFit
-                        cache: true
-                        asynchronous: true
-                        smooth: true
-                        sourceSize.width: 2400
-                        sourceSize.height: 2400
+                        zoom: viewerScale
+                        rotation: viewerRotation
+                        pan: Qt.point(0, 0)
+                        onFullSizeChanged: {
+                            if (fullSize.width > 0 && fullSize.height > 0) {
+                                viewerDim = fullSize.width + "x" + fullSize.height
+                                viewerLoading = false
+                            }
+                        }
+                    }
+
+                    PinchHandler {
+                        target: null
+                        property real startScale: 1.0
+                        onActiveChanged: {
+                            if (active) startScale = viewerScale
+                        }
+                        onScaleChanged: {
+                            if (!active) return
+                            viewerScale = Math.max(0.05, Math.min(20, startScale * scale))
+                        }
+                        onTranslationChanged: {
+                            if (!active) return
+                            fullImage.pan = Qt.point(fullImage.pan.x + translation.x, fullImage.pan.y + translation.y)
+                        }
+                    }
+                    WheelHandler {
+                        target: null
+                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                        onWheel: function(event) {
+                            var dy = event.angleDelta.y
+                            if (dy === 0) return
+                            var factor = dy > 0 ? 1.12 : 1 / 1.12
+                            viewerScale = Math.max(0.05, Math.min(20, viewerScale * factor))
+                            event.accepted = true
+                        }
+                    }
+                    TapHandler {
+                        acceptedButtons: Qt.LeftButton
+                        gesturePolicy: TapHandler.WithinBounds
+                        onDoubleTapped: {
+                            viewerRotation = 0
+                            viewerScale = 1.0
+                            fullImage.pan = Qt.point(0, 0)
+                        }
+                    }
+
+                    DragHandler {
+                        target: null
+                        onTranslationChanged: {
+                            fullImage.pan = Qt.point(fullImage.pan.x + translation.x, fullImage.pan.y + translation.y)
+                        }
                     }
                 }
             }
@@ -378,7 +446,7 @@ ApplicationWindow {
 
     Window {
         id: viewerWindow
-        visible: false
+        visibility: Window.Hidden
         width: 1100
         height: 820
         color: "#0f1115"
@@ -387,121 +455,23 @@ ApplicationWindow {
                : (viewerTitle.length > 0 ? viewerTitle : "原图预览")
         flags: Qt.Window
 
-            Flickable {
-                id: viewerFlick
-                anchors.fill: parent
-                contentWidth: Math.max(viewerImage.paintedWidth * viewerScale, width)
-                contentHeight: Math.max(viewerImage.paintedHeight * viewerScale, height)
-            clip: true
-            interactive: true
-            boundsBehavior: Flickable.StopAtBounds
-            flickDeceleration: 2500
-            focus: true
-
-            Image {
-                id: viewerImage
-                anchors.centerIn: parent
-                source: viewerSource
-                fillMode: Image.PreserveAspectFit
-                cache: true
-                asynchronous: true
-                smooth: true
-                sourceSize.width: 3200
-                sourceSize.height: 3200
-                transformOrigin: Item.Center
-                transform: [
-                    Scale { xScale: viewerScale; yScale: viewerScale; origin.x: viewerImage.paintedWidth / 2; origin.y: viewerImage.paintedHeight / 2 },
-                    Rotation { angle: viewerRotation; origin.x: viewerImage.paintedWidth / 2; origin.y: viewerImage.paintedHeight / 2 }
-                ]
-
-                onStatusChanged: {
-                    if (status === Image.Loading) {
-                        viewerLoading = true
-                        viewerDim = ""
-                    }
-                    if (status === Image.Ready) {
-                        viewerRotation = 0
-                        var w = viewerImage.implicitWidth > 0 ? viewerImage.implicitWidth : viewerImage.paintedWidth
-                        var h = viewerImage.implicitHeight > 0 ? viewerImage.implicitHeight : viewerImage.paintedHeight
-                        viewerDim = Math.max(1, Math.round(w)) + "x" + Math.max(1, Math.round(h))
-                        viewerLoading = false
-                        fitViewer()
-                    }
-                    if (status === Image.Error) {
-                        viewerLoading = false
-                        viewerDim = ""
-                    }
-                }
-
-                PinchHandler {
-                    id: pinch
-                    target: null // manual control
-                    property real startScale: 1.0
-                    onActiveChanged: {
-                        if (active) {
-                            startScale = viewerScale
-                        }
-                    }
-                    onScaleChanged: {
-                        if (!active)
-                            return
-                        var s = startScale * scale
-                        viewerScale = Math.max(0.1, Math.min(10, s))
-                        centerViewer()
-                    }
-                }
-
-                WheelHandler {
-                    id: wheel
-                    target: null
-                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                    onWheel: function(event) {
-                        var dy = event.angleDelta.y
-                        if (dy === 0)
-                            return
-                        var factor = dy > 0 ? 1.12 : 1 / 1.12
-                        viewerScale = Math.max(0.1, Math.min(10, viewerScale * factor))
-                        centerViewer()
-                        event.accepted = true
-                    }
-                }
-
-                TapHandler {
-                    acceptedButtons: Qt.LeftButton
-                    gesturePolicy: TapHandler.WithinBounds
-                    onDoubleTapped: {
-                        viewerRotation = 0
-                        fitViewer()
-                    }
+        TiledImage {
+            id: viewerTile
+            anchors.fill: parent
+            source: viewerSource
+            zoom: viewerScale
+            rotation: viewerRotation
+            onFullSizeChanged: {
+                if (fullSize.width > 0 && fullSize.height > 0) {
+                    viewerDim = fullSize.width + "x" + fullSize.height
+                    viewerLoading = false
                 }
             }
-
-            Rectangle {
-                anchors.centerIn: parent
-                width: 120
-                height: 120
-                radius: 12
-                color: "#161922"
-                border.color: "#252a36"
-                visible: viewerLoading || viewerSource.length === 0
-                Text {
-                    anchors.centerIn: parent
-                    text: "Loading..."
-                    color: "#8892a7"
-                    font.pixelSize: 14
-                    font.bold: true
-                }
-            }
-
-            onWidthChanged: centerViewer()
-            onHeightChanged: centerViewer()
-            onContentWidthChanged: centerViewer()
-            onContentHeightChanged: centerViewer()
         }
 
         Shortcut {
             sequences: [StandardKey.Close, StandardKey.Cancel]
-            onActivated: viewerWindow.visible = false
+            onActivated: viewerWindow.visibility = Window.Hidden
         }
         Shortcut {
             sequences: ["Left"]
@@ -516,18 +486,12 @@ ApplicationWindow {
         Shortcut {
             sequences: ["Up"]
             context: Qt.ApplicationShortcut
-            onActivated: {
-                viewerRotation = (viewerRotation + 90) % 360
-                fitViewer()
-            }
+            onActivated: viewerRotation = (viewerRotation + 90) % 360
         }
         Shortcut {
             sequences: ["Down"]
             context: Qt.ApplicationShortcut
-            onActivated: {
-                viewerRotation = (viewerRotation + 270) % 360
-                fitViewer()
-            }
+            onActivated: viewerRotation = (viewerRotation + 270) % 360
         }
     }
 
